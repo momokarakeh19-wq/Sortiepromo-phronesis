@@ -149,7 +149,7 @@ app.post('/api/orders', async (req, res) => {
         cancelUrl: `${BASE_URL}/cancel.html`,
         webhookUrl: `${BASE_URL}/api/webhooks/senepay`,
         country: 'SN',
-        metadata: { firstName, lastName, email, phone, quantity: qty },
+        metadata: { firstName, lastName, email, phone, quantity: String(qty) },
         expiresInMinutes: 30,
       }),
     });
