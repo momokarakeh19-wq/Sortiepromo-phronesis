@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Ticket Cérémonie PHRONESIS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;0,700;1,500&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #14100b;
+    --bg-card: #1f1810;
+    --gold: #d9ad53;
+    --gold-light: #f3d98c;
+    --gold-deep: #9c7530;
+    --cream: #f3ead8;
+    --cream-dim: #c9bca0;
+    --error: #e3674f;
+    --success: #6fae74;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: radial-gradient(ellipse at top, #221a10 0%, var(--bg) 55%);
+    color: var(--cream);
+    font-family: 'Inter', sans-serif;
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    padding: 0 0 60px;
+  }
+
+  .wrap { width: 100%; max-width: 540px; }
+
+  .banner {
+    width: 100%;
+    display: block;
+  }
+
+  .ticket {
+    margin: -1px 18px 0;
+    background: var(--bg-card);
+    border-radius: 0 0 18px 18px;
+    box-shadow: 0 30px 60px -20px rgba(0,0,0,0.6);
+    overflow: hidden;
+    position: relative;
+  }
+
+  .ticket-top {
+    padding: 28px 26px 22px;
+    text-align: center;
+  }
+
+  .eyebrow {
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--gold);
+    margin: 0 0 10px;
+  }
+
+  h1 {
+    font-family: 'Playfair Display', serif;
+    font-style: italic;
+    font-weight: 500;
+    font-size: 28px;
+    margin: 0 0 6px;
+    color: var(--gold-light);
+  }
+
+  .meta {
+    font-size: 13.5px;
+    color: var(--cream-dim);
+    margin: 0;
+    line-height: 1.5;
+  }
+
+  .price-pill {
+    display: inline-block;
+    margin-top: 16px;
+    padding: 8px 18px;
+    border: 1px solid var(--gold-deep);
+    border-radius: 999px;
+    font-weight: 600;
+    font-size: 14px;
+    color: var(--gold-light);
+    background: rgba(217,173,83,0.08);
+  }
+
+  /* Tear-line ticket effect */
+  .perforation {
+    position: relative;
+    height: 0;
+    border-top: 1.5px dashed rgba(217,173,83,0.35);
+    margin: 0 0;
+  }
+  .perforation::before, .perforation::after {
+    content: "";
+    position: absolute;
+    top: -10px;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: radial-gradient(circle at center, #14100b 60%, transparent 61%);
+  }
+  .perforation::before { left: -10px; }
+  .perforation::after { right: -10px; }
+
+  form {
+    padding: 26px 26px 30px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  label {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--cream-dim);
+    margin-bottom: 6px;
+    display: block;
+  }
+
+  input, select {
+    width: 100%;
+    padding: 13px 14px;
+    background: #161109;
+    border: 1px solid #3a2f1c;
+    border-radius: 10px;
+    color: var(--cream);
+    font-size: 15px;
+    font-family: 'Inter', sans-serif;
+    transition: border-color 0.15s ease;
+  }
+
+  input::placeholder { color: #5c5240; }
+
+  input:focus, select:focus {
+    outline: none;
+    border-color: var(--gold);
+  }
+
+  .phone-row {
+    display: flex;
+    gap: 10px;
+  }
+  .phone-row input.prefix {
+    flex: 0 0 64px;
+    text-align: center;
+    color: var(--cream-dim);
+  }
+
+  .field { display: flex; flex-direction: column; }
+
+  .total-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    padding-top: 8px;
+    border-top: 1px solid #2c2415;
+    margin-top: 6px;
+  }
+  .total-row span:first-child {
+    font-size: 13px;
+    color: var(--cream-dim);
+  }
+  .total-row span:last-child {
+    font-family: 'Playfair Display', serif;
+    font-size: 22px;
+    color: var(--gold-light);
+  }
+
+  button {
+    margin-top: 8px;
+    padding: 16px;
+    border: none;
+    border-radius: 12px;
+    background: linear-gradient(135deg, var(--gold-light), var(--gold) 55%, var(--gold-deep));
+    color: #221a0c;
+    font-weight: 700;
+    font-size: 15.5px;
+    letter-spacing: 0.01em;
+    cursor: pointer;
+    transition: transform 0.12s ease, box-shadow 0.12s ease;
+  }
+  button:hover { transform: translateY(-1px); box-shadow: 0 8px 22px -8px rgba(217,173,83,0.55); }
+  button:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+
+  .note {
+    text-align: center;
+    font-size: 12px;
+    color: var(--cream-dim);
+    margin-top: -4px;
+  }
+
+  .message {
+    font-size: 13.5px;
+    padding: 12px 14px;
+    border-radius: 10px;
+    display: none;
+  }
+  .message.error { display: block; background: rgba(227,103,79,0.12); color: var(--error); border: 1px solid rgba(227,103,79,0.3); }
+  .message.success { display: block; background: rgba(111,174,116,0.12); color: var(--success); border: 1px solid rgba(111,174,116,0.3); }
+
+  footer {
+    text-align: center;
+    margin-top: 22px;
+    font-size: 12px;
+    color: #564c39;
+  }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <img class="banner" src="/ticket.jpg" alt="Cérémonie de remise de parchemins PHRONESIS" />
+
+    <div class="ticket">
+      <div class="ticket-top">
+        <p class="eyebrow">Promotion sortante PHRONESIS</p>
+        <h1>Ticket Cérémonie</h1>
+        <p class="meta">Dimanche 26 juillet 2026 · Théâtre National Daniel Sorano · 13h00</p>
+        <span class="price-pill" id="pricePill">3 000 FCFA / billet</span>
+      </div>
+
+      <div class="perforation"></div>
+
+      <form id="ticketForm">
+        <div class="field">
+          <label for="firstName">Prénom</label>
+          <input id="firstName" name="firstName" placeholder="Ex: Amadou" required />
+        </div>
+
+        <div class="field">
+          <label for="lastName">Nom</label>
+          <input id="lastName" name="lastName" placeholder="Ex: Diallo" required />
+        </div>
+
+        <div class="field">
+          <label for="email">Adresse email</label>
+          <input id="email" type="email" name="email" placeholder="votre@email.com" required />
+          <p class="note" style="text-align:left;margin-top:6px;">Votre ticket sera envoyé à cette adresse</p>
+        </div>
+
+        <div class="field">
+          <label for="phone">Numéro de téléphone</label>
+          <div class="phone-row">
+            <input class="prefix" value="221" disabled />
+            <input id="phone" name="phone" placeholder="776543210" required pattern="[0-9]{9}" maxlength="9" />
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="quantity">Nombre de tickets (Max <span id="maxTickets">10</span>)</label>
+          <input id="quantity" name="quantity" type="number" min="1" max="10" value="1" required />
+        </div>
+
+        <div class="total-row">
+          <span>Total à payer</span>
+          <span id="totalAmount">3 000 FCFA</span>
+        </div>
+
+        <div class="message" id="message"></div>
+
+        <button type="submit" id="payButton">Payer avec Wave ou Orange Money</button>
+        <p class="note">Paiement sécurisé via SenePay</p>
+      </form>
+    </div>
+
+    <footer>PHRONESIS · Université des Sciences de la Santé de Dakar</footer>
+  </div>
+
+<script>
+  let PRICE = 3000;
+  let MAX_TICKETS = 10;
+
+  fetch('/api/config').then(r => r.json()).then(cfg => {
+    PRICE = cfg.pricePerTicket;
+    MAX_TICKETS = cfg.maxTickets;
+    document.getElementById('pricePill').textContent = PRICE.toLocaleString('fr-FR') + ' FCFA / billet';
+    document.getElementById('maxTickets').textContent = MAX_TICKETS;
+    document.getElementById('quantity').max = MAX_TICKETS;
+    updateTotal();
+  }).catch(() => {});
+
+  function updateTotal() {
+    const qty = parseInt(document.getElementById('quantity').value || '1', 10);
+    const total = qty * PRICE;
+    document.getElementById('totalAmount').textContent = total.toLocaleString('fr-FR') + ' FCFA';
+  }
+  document.getElementById('quantity').addEventListener('input', updateTotal);
+
+  const form = document.getElementById('ticketForm');
+  const messageBox = document.getElementById('message');
+  const payButton = document.getElementById('payButton');
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    messageBox.className = 'message';
+    messageBox.textContent = '';
+
+    const firstName = document.getElementById('firstName').value.trim();
+    const lastName = document.getElementById('lastName').value.trim();
+    const email = document.getElementById('email').value.trim();
+    const phoneLocal = document.getElementById('phone').value.trim();
+    const quantity = parseInt(document.getElementById('quantity').value, 10);
+
+    if (!/^[0-9]{9}$/.test(phoneLocal)) {
+      messageBox.className = 'message error';
+      messageBox.textContent = 'Entrez les 9 chiffres de votre numéro (ex: 776543210), sans le 221.';
+      return;
+    }
+
+    payButton.disabled = true;
+    payButton.textContent = 'Redirection en cours...';
+
+    try {
+      const res = await fetch('/api/orders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          firstName, lastName, email,
+          phone: '221' + phoneLocal,
+          quantity,
+        }),
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || 'Une erreur est survenue.');
+      }
+
+      window.location.href = data.checkoutUrl;
+    } catch (err) {
+      messageBox.className = 'message error';
+      messageBox.textContent = err.message;
+      payButton.disabled = false;
+      payButton.textContent = 'Payer avec Wave ou Orange Money';
+    }
+  });
+</script>
+</body>
+</html>
