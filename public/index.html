@@ -264,7 +264,7 @@
         <div class="message" id="message"></div>
 
         <button type="submit" id="payButton">Payer avec Wave ou Orange Money</button>
-        <p class="note">Paiement sécurisé via SenePay</p>
+        <p class="note">Paiement sécurisé via PayTech</p>
       </form>
     </div>
 
@@ -331,7 +331,7 @@
         throw new Error(data.error || 'Une erreur est survenue.');
       }
 
-      window.location.href = data.checkoutUrl;
+      window.location.href = data.redirect_url;
     } catch (err) {
       messageBox.className = 'message error';
       messageBox.textContent = err.message;
