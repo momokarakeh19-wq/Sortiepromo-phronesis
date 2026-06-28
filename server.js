@@ -12,18 +12,17 @@ const PRICE_PER_TICKET = parseInt(process.env.PRICE_PER_TICKET || '3000', 10);
 const MAX_TICKETS = parseInt(process.env.MAX_TICKETS || '10', 10);
 const SALE_DEADLINE = process.env.SALE_DEADLINE || '2026-07-26T23:59:59';
 const BASE_URL = process.env.BASE_URL || `http://localhost:${PORT}`;
+
 const PAYTECH_API_KEY = process.env.PAYTECH_API_KEY;
 const PAYTECH_API_SECRET = process.env.PAYTECH_API_SECRET;
-
-const SENEPAY_WEBHOOK_SECRET = process.env.SENEPAY_WEBHOOK_SECRET;
 const RESEND_API_KEY = process.env.RESEND_API_KEY;
 const EMAIL_FROM = process.env.EMAIL_FROM || 'PHRONESIS <onboarding@resend.dev>';
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'changeme';
+
 const PAYTECH_BASE = 'https://paytech.sn/api/payment/request-payment';
-
-
-
 const DATA_FILE = path.join(__dirname, 'data', 'orders.json');
+
+// S'assurer que le dossier data existe au démarrage
 if (!fs.existsSync(path.join(__dirname, 'data'))) {
   fs.mkdirSync(path.join(__dirname, 'data'));
 }
@@ -43,78 +42,60 @@ function writeOrders(orders) {
   fs.writeFileSync(DATA_FILE, JSON.stringify(orders, null, 2));
 }
 
-// =====================================================================
-// WEBHOOK SenePay — doit être déclaré AVANT express.json() car il a
-// besoin du corps brut (raw) de la requête pour vérifier la signature.
-// =====================================================================
-app.post(
-  '/api/webhooks/senepay',
-  express.raw({ type: 'application/json' }),
-  async (req, res) => {
-    try {
-      const signature = req.headers['x-senepay-signature'];
-      const rawBody = req.body.toString('utf8');
+// Les routes IPN PayTech utilisent un format URL Encoded par défaut
+app.use('/api/webhooks/paytech', express.urlencoded({ extended: true }));
 
-      if (SENEPAY_WEBHOOK_SECRET) {
-        const expected = crypto
-          .createHmac('sha256', SENEPAY_WEBHOOK_SECRET)
-          .update(rawBody)
-          .digest('hex');
-
-        if (signature !== expected) {
-          console.error('Signature webhook invalide');
-          return res.status(401).send('Signature invalide');
-        }
-      } else {
-        console.warn('SENEPAY_WEBHOOK_SECRET non configuré — signature non vérifiée (à éviter en production)');
-      }
-
-      const payload = JSON.parse(rawBody);
-      const orders = readOrders();
-      const order = orders.find((o) => o.orderReference === payload.orderReference);
-
-      if (!order) {
-        console.error('Webhook reçu pour une commande inconnue:', payload.orderReference);
-        return res.status(200).json({ received: true });
-      }
-
-      // Idempotence : si déjà traité, ne rien refaire (le webhook peut être renvoyé plusieurs fois)
-      if (order.status === 'paid' || order.status === 'failed') {
-        return res.status(200).json({ received: true });
-      }
-
-      if (payload.event === 'checkout.session.completed') {
-        order.status = 'paid';
-        order.paidAt = payload.timestamp || new Date().toISOString();
-        order.transactionId = payload.transactionId || null;
-        order.netAmount = payload.netAmount || null;
-        writeOrders(orders);
-
-        // Envoi de l'email de confirmation avec le ticket en pièce jointe
-        sendTicketEmail(order).catch((err) =>
-          console.error('Erreur envoi email:', err)
-        );
-      } else if (payload.event === 'checkout.session.failed') {
-        order.status = 'failed';
-        writeOrders(orders);
-      }
-
-      return res.status(200).json({ received: true });
-    } catch (err) {
-      console.error('Erreur traitement webhook:', err);
-      // On répond 200 quand même pour éviter des renvois infinis sur une erreur de notre côté
-      // déjà loggée ; SenePay réessaiera de toute façon en cas de non-2xx.
-      return res.status(500).json({ received: false });
-    }
-  }
-);
-
-// Tout le reste de l'app peut utiliser express.json() normalement
+// Les autres routes utilisent JSON standard
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
 // =====================================================================
-// Créer une commande + session de paiement SenePay
+// 1. WEBHOOK (IPN) PAYTECH — Traitement automatique après paiement
+// =====================================================================
+app.post('/api/webhooks/paytech', async (req, res) => {
+  try {
+    const { type_event, ref_command, item_price } = req.body;
+
+    console.log(`Notification IPN PayTech reçue pour la commande : ${ref_command} (Événement : ${type_event})`);
+
+    const orders = readOrders();
+    const order = orders.find((o) => o.orderReference === ref_command);
+
+    if (!order) {
+      console.error(`Aucune commande trouvée pour la référence : ${ref_command}`);
+      return res.status(200).send('IPN Received (Order not found)');
+    }
+
+    // Idempotence : Si déjà traitée, on s'arrête là
+    if (order.status === 'paid' || order.status === 'failed') {
+      return res.status(200).send('IPN Received (Already processed)');
+    }
+
+    if (type_event === 'sale_complete') {
+      order.status = 'paid';
+      order.paidAt = new Date().toISOString();
+      writeOrders(orders);
+
+      console.log(`Commande ${ref_command} validée avec succès ! Lancement de l'envoi de l'email.`);
+
+      // Envoi automatique de l'email avec le ticket en pièce jointe
+      sendTicketEmail(order).catch((err) =>
+        console.error('Erreur lors de l’envoi automatique de l’email :', err)
+      );
+    } else {
+      order.status = 'failed';
+      writeOrders(orders);
+    }
+
+    return res.status(200).send('IPN Received and Processed');
+  } catch (err) {
+    console.error('Erreur critique lors du traitement du Webhook PayTech :', err);
+    return res.status(200).send('IPN Received with Internal Error');
+  }
+});
+
+// =====================================================================
+// 2. INITIALISATION DU PAIEMENT PAYTECH (Déclenché lors du clic sur Acheter)
 // =====================================================================
 app.post('/api/orders', async (req, res) => {
   try {
@@ -136,38 +117,40 @@ app.post('/api/orders', async (req, res) => {
     const amount = qty * PRICE_PER_TICKET;
     const orderReference = `PHR-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
-    const senepayRes = await fetch(`${SENEPAY_BASE}/api/v1/checkout/sessions`, {
+    // Structure des paramètres requis par l'API officielle PayTech
+    const paymentData = {
+      item_name: `Ticket Sortie Promo Phronesis (${qty})`,
+      item_price: amount,
+      currency: 'XOF',
+      ref_command: orderReference,
+      command_name: `Achat de ${qty} ticket(s) - Cérémonie PHRONESIS`,
+      env: 'live',
+      success_url: `${BASE_URL}/success.html?ref=${orderReference}`,
+      cancel_url: `${BASE_URL}/cancel.html`
+    };
+
+    const paytechRes = await fetch(PAYTECH_BASE, {
       method: 'POST',
       headers: {
+        'Accept': 'application/json',
         'Content-Type': 'application/json',
-        'X-Api-Key': SENEPAY_API_KEY,
-        'X-Api-Secret': SENEPAY_API_SECRET,
+        'API_KEY': PAYTECH_API_KEY,
+        'API_SECRET': PAYTECH_API_SECRET,
       },
-      body: JSON.stringify({
-        amount,
-        currency: 'XOF',
-        orderReference,
-        description: `${qty} ticket(s) - Cérémonie PHRONESIS`,
-        returnUrl: `${BASE_URL}/success.html?ref=${orderReference}`,
-        cancelUrl: `${BASE_URL}/cancel.html`,
-        webhookUrl: `${BASE_URL}/api/webhooks/senepay`,
-        country: 'SN',
-        metadata: { firstName, lastName, email, phone, quantity: String(qty) },
-        expiresInMinutes: 30,
-      }),
+      body: JSON.stringify(paymentData),
     });
 
-    const senepayData = await senepayRes.json();
+    const paytechData = await paytechRes.json();
 
-    if (!senepayRes.ok) {
-      console.error('Erreur SenePay:', senepayData);
-      return res.status(400).json({ error: senepayData.message || 'Erreur lors de la création du paiement.' });
+    if (!paytechRes.ok || paytechData.success !== 1) {
+      console.error('Erreur API PayTech:', paytechData);
+      return res.status(400).json({ error: 'Erreur lors de l’initialisation du paiement avec PayTech.' });
     }
 
+    // Sauvegarde en base locale (Orders) de la commande en attente
     const orders = readOrders();
     orders.push({
       orderReference,
-      sessionToken: senepayData.sessionToken,
       firstName,
       lastName,
       email,
@@ -179,23 +162,29 @@ app.post('/api/orders', async (req, res) => {
     });
     writeOrders(orders);
 
-    return res.json({ checkoutUrl: senepayData.checkoutUrl });
+    // Compatibilité frontend : renvoie l'URL sous le format attendu par ton index.html
+    return res.json({ checkoutUrl: paytechData.redirect_url });
   } catch (err) {
-    console.error('Erreur création commande:', err);
+    console.error('Erreur création commande PayTech:', err);
     return res.status(500).json({ error: 'Erreur serveur, réessayez.' });
   }
 });
 
 // =====================================================================
-// Envoi de l'email avec le ticket en pièce jointe (via Resend)
+// 3. ENVOI DE L'EMAIL DE CONFIRMATION (Via Resend)
 // =====================================================================
 async function sendTicketEmail(order) {
   if (!RESEND_API_KEY) {
-    console.warn('RESEND_API_KEY non configuré, email non envoyé.');
+    console.warn('RESEND_API_KEY non configuré, l’email n’a pas pu être envoyé.');
     return;
   }
 
   const ticketPath = path.join(__dirname, 'public', 'ticket.jpg');
+  if (!fs.existsSync(ticketPath)) {
+    console.error(`Le fichier ticket image n’existe pas au chemin : ${ticketPath}`);
+    return;
+  }
+  
   const ticketBase64 = fs.readFileSync(ticketPath).toString('base64');
 
   const html = `
@@ -204,7 +193,7 @@ async function sendTicketEmail(order) {
       <p>Votre paiement de <strong>${order.amount} FCFA</strong> pour <strong>${order.quantity} ticket(s)</strong>
       à la Cérémonie de Remise de Parchemins PHRONESIS a bien été confirmé.</p>
       <p><strong>Référence de commande :</strong> ${order.orderReference}</p>
-      <p>Votre ticket est en pièce jointe. Présentez-vous à l'entrée avec votre nom (${order.firstName} ${order.lastName})
+      <p>Votre ticket est attaché en pièce jointe à cet email. Présentez-vous à l'entrée avec votre nom (${order.firstName} ${order.lastName})
       le jour de l'événement.</p>
       <p>📅 Dimanche 26 juillet 2026 — Théâtre National Daniel Sorano à 13h00</p>
       <p>À bientôt !<br/>L'équipe PHRONESIS</p>
@@ -233,12 +222,14 @@ async function sendTicketEmail(order) {
 
   if (!resp.ok) {
     const errText = await resp.text();
-    throw new Error(`Resend a refusé l'envoi: ${errText}`);
+    throw new Error(`Resend a refusé l'envoi de l'email : ${errText}`);
+  } else {
+    console.log(`Email envoyé avec succès à ${order.email}`);
   }
 }
 
 // =====================================================================
-// Page admin — liste des commandes payées (protégée par mot de passe)
+// 4. PANNEAU D'ADMINISTRATION
 // =====================================================================
 app.get('/admin', (req, res) => {
   const password = req.query.password;
@@ -313,5 +304,6 @@ app.get('/api/config', (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`Serveur lancé sur le port ${PORT}`);
+  console.log(`Serveur Phronesis démarré et actif sur le port ${PORT}`);
 });
+
