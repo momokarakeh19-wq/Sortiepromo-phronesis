@@ -115,14 +115,15 @@ app.post('/api/orders', (req, res) => {
       port: 443, // Port HTTPS standard et fluide
       path: '/api/payment/request-payment',
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-        'API_KEY': PAYTECH_API_KEY,
-        'API_SECRET': PAYTECH_API_SECRET,
-        'Content-Length': Buffer.byteLength(paymentData)
-      }
-    };
+              headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'API_KEY': process.env.PAYTECH_API_KEY,
+            'API_SECRET': process.env.PAYTECH_API_SECRET,
+            'Content-Length': Buffer.byteLength(paymentData)
+        }
+
+    
 
     const request = https.request(options, (response) => {
       let data = '';
