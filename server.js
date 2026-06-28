@@ -12,13 +12,16 @@ const PRICE_PER_TICKET = parseInt(process.env.PRICE_PER_TICKET || '3000', 10);
 const MAX_TICKETS = parseInt(process.env.MAX_TICKETS || '10', 10);
 const SALE_DEADLINE = process.env.SALE_DEADLINE || '2026-07-26T23:59:59';
 const BASE_URL = process.env.BASE_URL || `http://localhost:${PORT}`;
-const SENEPAY_API_KEY = process.env.SENEPAY_API_KEY;
-const SENEPAY_API_SECRET = process.env.SENEPAY_API_SECRET;
+const PAYTECH_API_KEY = process.env.PAYTECH_API_KEY;
+const PAYTECH_API_SECRET = process.env.PAYTECH_API_SECRET;
+
 const SENEPAY_WEBHOOK_SECRET = process.env.SENEPAY_WEBHOOK_SECRET;
 const RESEND_API_KEY = process.env.RESEND_API_KEY;
 const EMAIL_FROM = process.env.EMAIL_FROM || 'PHRONESIS <onboarding@resend.dev>';
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'changeme';
-const SENEPAY_BASE = 'https://api.sene-pay.com';
+const PAYTECH_BASE = 'https://paytech.sn/api/payment/request-payment';
+
+';
 
 const DATA_FILE = path.join(__dirname, 'data', 'orders.json');
 if (!fs.existsSync(path.join(__dirname, 'data'))) {
