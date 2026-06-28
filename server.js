@@ -104,27 +104,24 @@ app.post('/api/orders', (req, res) => {
       currency: 'XOF',
       ref_command: orderReference,
       command_name: `Achat de ${qty} ticket(s) - Cérémonie PHRONESIS`,
-     env: 'test',
-
+      env: 'test',
       success_url: `${BASE_URL}/success.html?ref=${orderReference}`,
       cancel_url: `${BASE_URL}/cancel.html`
     });
 
     const options = {
       hostname: 'paytech.sn',
-      port: 443, // Port HTTPS standard et fluide
+      port: 443,
       path: '/api/payment/request-payment',
       method: 'POST',
-                      headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-            'API_KEY': process.env.PAYTECH_API_KEY,
-            'API_SECRET': process.env.PAYTECH_API_SECRET,
-            'Content-Length': Buffer.byteLength(paymentData)
-        }
-
-
-    
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'API_KEY': process.env.PAYTECH_API_KEY,
+        'API_SECRET': process.env.PAYTECH_API_SECRET,
+        'Content-Length': Buffer.byteLength(paymentData)
+      }
+    };
 
     const request = https.request(options, (response) => {
       let data = '';
@@ -273,3 +270,4 @@ app.get('/api/config', (req, res) => {
 app.listen(PORT, () => {
   console.log(`Serveur Phronesis actif sur le port ${PORT}`);
 });
+
