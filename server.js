@@ -104,7 +104,7 @@ app.post('/api/orders', (req, res) => {
       currency: 'XOF',
       ref_command: orderReference,
       command_name: `Achat de ${qty} ticket(s) - Cérémonie PHRONESIS`,
-      env: 'test',
+      env: 'live',
       success_url: `${BASE_URL}/success.html?ref=${orderReference}`,
       cancel_url: `${BASE_URL}/cancel.html`
     });
