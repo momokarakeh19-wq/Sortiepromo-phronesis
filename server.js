@@ -56,26 +56,18 @@ app.post('/api/webhooks/paytech', async (req, res) => {
     const orders = readOrders();
     const order = orders.find((o) => o.orderReference === ref_command);
 
-    if (!order) {
-      return res.status(200).send('Order not found');
-    }
-
-    if (order.status === 'paid' || order.status === 'failed') {
-      return res.status(200).send('Already processed');
-    }
+    if (!order) return res.status(200).send('Order not found');
+    if (order.status === 'paid' || order.status === 'failed') return res.status(200).send('Already processed');
 
     if (type_event === 'sale_complete') {
       order.status = 'paid';
       order.paidAt = new Date().toISOString();
       writeOrders(orders);
-      console.log(`Commande ${ref_command} payée.`);
-
       sendTicketEmail(order).catch((err) => console.error('Erreur email:', err));
     } else {
       order.status = 'failed';
       writeOrders(orders);
     }
-
     return res.status(200).send('OK');
   } catch (err) {
     console.error('Erreur Webhook:', err);
@@ -84,7 +76,7 @@ app.post('/api/webhooks/paytech', async (req, res) => {
 });
 
 // =====================================================================
-// 2. INITIALISATION DU PAIEMENT PAYTECH (Via HTTPS natif)
+// 2. INITIALISATION DU PAIEMENT PAYTECH
 // =====================================================================
 app.post('/api/orders', (req, res) => {
   try {
@@ -119,7 +111,7 @@ app.post('/api/orders', (req, res) => {
 
     const options = {
       hostname: 'paytech.sn',
-      port: 4443, // Port requis par l'API PayTech
+      port: 443, // Port HTTPS standard et fluide
       path: '/api/payment/request-payment',
       method: 'POST',
       headers: {
@@ -154,18 +146,18 @@ app.post('/api/orders', (req, res) => {
 
             return res.json({ checkoutUrl: paytechData.redirect_url });
           } else {
-            console.error('PayTech a renvoyé un échec:', paytechData);
+            console.error('PayTech refus:', paytechData);
             return res.status(400).json({ error: 'Échec de l’initialisation du paiement.' });
           }
         } catch (parseErr) {
-          console.error('Erreur parsing réponse PayTech:', data);
+          console.error('Erreur de lecture PayTech:', data);
           return res.status(500).json({ error: 'Erreur de communication avec le processeur.' });
         }
       });
     });
 
     request.on('error', (err) => {
-      console.error('Erreur requête HTTPS PayTech:', err);
+      console.error('Erreur réseau PayTech:', err);
       return res.status(500).json({ error: 'Erreur de connexion aux services de paiement.' });
     });
 
@@ -179,7 +171,7 @@ app.post('/api/orders', (req, res) => {
 });
 
 // =====================================================================
-// 3. ENVOI DE L'EMAIL (Resend via HTTPS natif)
+// 3. ENVOI DE L'EMAIL (Resend)
 // =====================================================================
 async function sendTicketEmail(order) {
   if (!RESEND_API_KEY) return;
