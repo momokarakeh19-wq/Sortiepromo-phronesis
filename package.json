@@ -1,16 +1,16 @@
 {
-  "name": "phronesis-ticket-app",
-  "version": "1.0.0",
-  "description": "Vente de tickets en ligne pour la ceremonie PHRONESIS avec paiement SenePay (Wave / Orange Money)",
-  "main": "server.js",
   "engines": {
-    "node": ">=18"
+    "node": "20.x"
   },
-  "scripts": {
-    "start": "node server.js"
-  },
+  "name": "sortiepromo-phronesis",
+  "version": "1.0.0",
+  "description": "",
+  "main": "server.js",
   "dependencies": {
+    "crypto": "^1.0.1",
     "dotenv": "^16.4.5",
-    "express": "^4.19.2"
+    "express": "^4.19.2",
+    "fs": "^0.0.1-security",
+    "path": "^0.12.7"
   }
 }
