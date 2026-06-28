@@ -104,7 +104,7 @@ app.post('/api/orders', (req, res) => {
       currency: 'XOF',
       ref_command: orderReference,
       command_name: `Achat de ${qty} ticket(s) - Cérémonie PHRONESIS`,
-      env: 'live',
+      env: 'prod',
       success_url: 'https://sortiepromo-phronesis.onrender.com/success.html?ref=' + orderReference,
       cancel_url: 'https://sortiepromo-phronesis.onrender.com/cancel.html'
     });
