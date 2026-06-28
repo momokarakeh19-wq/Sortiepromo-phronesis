@@ -21,7 +21,7 @@ const EMAIL_FROM = process.env.EMAIL_FROM || 'PHRONESIS <onboarding@resend.dev>'
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'changeme';
 const PAYTECH_BASE = 'https://paytech.sn/api/payment/request-payment';
 
-';
+
 
 const DATA_FILE = path.join(__dirname, 'data', 'orders.json');
 if (!fs.existsSync(path.join(__dirname, 'data'))) {
