@@ -21,7 +21,6 @@ const BASE_URL           = process.env.BASE_URL || "http://localhost:3000";
 const resend = RESEND_API_KEY ? new Resend(RESEND_API_KEY) : null;
 const orders = {};
 
-// ── 1. Créer une session de paiement SenePay ──────────────────────────────────
 app.post("/api/create-payment", async (req, res) => {
   try {
     const { firstName, lastName, email, quantity } = req.body;
@@ -44,9 +43,11 @@ app.post("/api/create-payment", async (req, res) => {
       "https://api.sene-pay.com/api/v1/checkout/sessions",
       {
         amount,
+        currency: "XOF",
+        country: "SN",
         orderReference,
         description: `${qty} ticket(s) - ${EVENT_NAME}`,
-        successUrl: `${BASE_URL}/success.html?ref=${orderReference}`,
+        returnUrl:  `${BASE_URL}/success.html?ref=${orderReference}`,
         cancelUrl:  `${BASE_URL}/?cancelled=1`,
         webhookUrl: `${BASE_URL}/api/webhooks/senepay`,
         metadata: { firstName, lastName, email, quantity: qty }
@@ -76,12 +77,11 @@ app.post("/api/create-payment", async (req, res) => {
   }
 });
 
-// ── 2. Webhook SenePay ────────────────────────────────────────────────────────
 app.post("/api/webhooks/senepay", async (req, res) => {
   res.status(200).json({ received: true });
   try {
     const payload = req.body;
-    const ref = payload.orderReference || payload.order_id || payload.reference;
+    const ref = payload.orderReference || payload.order_id;
     const order = orders[ref];
     if (!order || order.status === "paid") return;
     const event = (payload.event || payload.status || "").toLowerCase();
@@ -91,14 +91,12 @@ app.post("/api/webhooks/senepay", async (req, res) => {
   } catch (e) { console.error("Webhook error:", e.message); }
 });
 
-// ── 3. Statut commande ────────────────────────────────────────────────────────
 app.get("/api/order-status", (req, res) => {
   const order = orders[req.query.ref];
   if (!order) return res.status(404).json({ error: "Commande introuvable." });
   res.json({ status: order.status, firstName: order.firstName, quantity: order.quantity });
 });
 
-// ── Email ─────────────────────────────────────────────────────────────────────
 async function sendTicketEmail(order, ref) {
   if (!resend) return console.warn("RESEND_API_KEY manquante.");
   try {
@@ -121,14 +119,14 @@ function buildTicketHtml(order, ref) {
         <h1 style="margin:6px 0 0;color:#FFFDF7;font-size:20px;">${EVENT_NAME}</h1>
       </td></tr>
       <tr><td style="padding:24px 28px;">
-        <p style="margin:0 0 4px;color:#777;font-size:11px;text-transform:uppercase;letter-spacing:1px;">Titulaire</p>
+        <p style="margin:0 0 4px;color:#777;font-size:11px;text-transform:uppercase;">Titulaire</p>
         <p style="margin:0 0 16px;color:#0B1E3D;font-size:18px;font-weight:bold;">${order.firstName} ${order.lastName}</p>
-        <p style="margin:0 0 4px;color:#777;font-size:11px;text-transform:uppercase;letter-spacing:1px;">Tickets</p>
+        <p style="margin:0 0 4px;color:#777;font-size:11px;text-transform:uppercase;">Tickets</p>
         <p style="margin:0 0 16px;color:#0B1E3D;font-size:18px;font-weight:bold;">${order.quantity}</p>
-        <p style="margin:0 0 4px;color:#777;font-size:11px;text-transform:uppercase;letter-spacing:1px;">Référence</p>
+        <p style="margin:0 0 4px;color:#777;font-size:11px;text-transform:uppercase;">Référence</p>
         <p style="margin:0 0 16px;color:#0B1E3D;font-size:15px;font-family:monospace;">${ref}</p>
         <div style="border-top:1px dashed #D4AF37;margin:16px 0;"></div>
-        <p style="margin:0;color:#555;font-size:13px;line-height:1.5;">Présente ce billet à l'entrée. Merci et à bientôt !</p>
+        <p style="margin:0;color:#555;font-size:13px;">Présente ce billet à l'entrée. Merci !</p>
       </td></tr>
     </table>
   </div>`;
