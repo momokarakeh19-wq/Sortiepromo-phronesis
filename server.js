@@ -42,15 +42,14 @@ app.post("/api/create-payment", async (req, res) => {
     const response = await axios.post(
       "https://api.sene-pay.com/api/v1/checkout/sessions",
       {
-        amount,
+        amount: amount,
         currency: "XOF",
         country: "SN",
-        orderReference,
+        orderReference: orderReference,
         description: `${qty} ticket(s) - ${EVENT_NAME}`,
         returnUrl:  `${BASE_URL}/success.html?ref=${orderReference}`,
         cancelUrl:  `${BASE_URL}/?cancelled=1`,
-        webhookUrl: `${BASE_URL}/api/webhooks/senepay`,
-        metadata: { firstName, lastName, email, quantity: qty }
+        webhookUrl: `${BASE_URL}/api/webhooks/senepay`
       },
       {
         headers: {
@@ -65,15 +64,12 @@ app.post("/api/create-payment", async (req, res) => {
     const checkoutUrl = data.checkoutUrl || data.checkout_url || data.payment_url || data.url;
 
     if (!checkoutUrl)
-      return res.status(500).json({ error: "Réponse API SenePay invalide.", raw: data });
+      return res.status(500).json({ error: "Réponse invalide.", raw: data });
 
     res.json({ checkoutUrl });
   } catch (err) {
     console.error("Erreur SenePay:", JSON.stringify(err.response?.data) || err.message);
-    res.status(500).json({
-      error: "Impossible de créer le paiement.",
-      detail: err.response?.data || err.message
-    });
+    res.status(500).json({ error: "Impossible de créer le paiement.", detail: err.response?.data || err.message });
   }
 });
 
