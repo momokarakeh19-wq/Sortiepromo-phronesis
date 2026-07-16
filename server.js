@@ -12,11 +12,11 @@ app.use(express.static(path.join(__dirname, "public")));
 
 const EVENT_NAME = "Sortie de la Promotion Phronesis 2025/2026";
 const TICKET_PRICE = 3000;
-const SENEPAY_API_KEY   = process.env.SENEPAY_API_KEY;
+const SENEPAY_API_KEY    = process.env.SENEPAY_API_KEY;
 const SENEPAY_API_SECRET = process.env.SENEPAY_API_SECRET;
-const RESEND_API_KEY    = process.env.RESEND_API_KEY;
-const SENDER_EMAIL      = process.env.SENDER_EMAIL || "onboarding@resend.dev";
-const BASE_URL          = process.env.BASE_URL || "http://localhost:3000";
+const RESEND_API_KEY     = process.env.RESEND_API_KEY;
+const SENDER_EMAIL       = process.env.SENDER_EMAIL || "onboarding@resend.dev";
+const BASE_URL           = process.env.BASE_URL || "http://localhost:3000";
 
 const resend = RESEND_API_KEY ? new Resend(RESEND_API_KEY) : null;
 const orders = {};
@@ -32,26 +32,24 @@ app.post("/api/create-payment", async (req, res) => {
     if (!qty || qty < 1 || qty > 10)
       return res.status(400).json({ error: "Nombre de tickets invalide (max 10)." });
 
-    const ref   = "PHRO-" + crypto.randomBytes(5).toString("hex").toUpperCase();
+    const orderReference = "PHRO-" + crypto.randomBytes(5).toString("hex").toUpperCase();
     const amount = TICKET_PRICE * qty;
 
-    orders[ref] = { firstName, lastName, email, quantity: qty, amount, status: "pending" };
+    orders[orderReference] = { firstName, lastName, email, quantity: qty, amount, status: "pending" };
 
     if (!SENEPAY_API_KEY || !SENEPAY_API_SECRET)
-      return res.status(500).json({ error: "Clés API manquantes. Contacte l'administrateur." });
+      return res.status(500).json({ error: "Clés API manquantes." });
 
-    // Appel API SenePay — création d'un paiement (payin)
     const response = await axios.post(
-      "https://api.sene-pay.com/api/v1/payin",
+      "https://api.sene-pay.com/api/v1/checkout/sessions",
       {
         amount,
-        currency: "XOF",
-        order_id: ref,
+        orderReference,
         description: `${qty} ticket(s) - ${EVENT_NAME}`,
-        callback_url: `${BASE_URL}/api/webhooks/senepay`,
-        return_url:   `${BASE_URL}/success.html?ref=${ref}`,
-        cancel_url:   `${BASE_URL}/?cancelled=1`,
-        customer: { name: `${firstName} ${lastName}`, email }
+        successUrl: `${BASE_URL}/success.html?ref=${orderReference}`,
+        cancelUrl:  `${BASE_URL}/?cancelled=1`,
+        webhookUrl: `${BASE_URL}/api/webhooks/senepay`,
+        metadata: { firstName, lastName, email, quantity: qty }
       },
       {
         headers: {
@@ -63,14 +61,14 @@ app.post("/api/create-payment", async (req, res) => {
     );
 
     const data = response.data;
-    const checkoutUrl = data.payment_url || data.checkout_url || data.url || data.redirect_url;
+    const checkoutUrl = data.checkoutUrl || data.checkout_url || data.payment_url || data.url;
 
     if (!checkoutUrl)
       return res.status(500).json({ error: "Réponse API SenePay invalide.", raw: data });
 
     res.json({ checkoutUrl });
   } catch (err) {
-    console.error("Erreur SenePay:", err.response?.data || err.message);
+    console.error("Erreur SenePay:", JSON.stringify(err.response?.data) || err.message);
     res.status(500).json({
       error: "Impossible de créer le paiement.",
       detail: err.response?.data || err.message
@@ -78,37 +76,37 @@ app.post("/api/create-payment", async (req, res) => {
   }
 });
 
-// ── 2. Webhook SenePay (confirmation paiement) ────────────────────────────────
+// ── 2. Webhook SenePay ────────────────────────────────────────────────────────
 app.post("/api/webhooks/senepay", async (req, res) => {
   res.status(200).json({ received: true });
   try {
     const payload = req.body;
-    const ref = payload.order_id || payload.orderReference || payload.reference;
+    const ref = payload.orderReference || payload.order_id || payload.reference;
     const order = orders[ref];
     if (!order || order.status === "paid") return;
-    const status = payload.status || payload.event || "";
-    if (!["paid","completed","success","checkout.session.completed"].some(s => status.toLowerCase().includes(s))) return;
+    const event = (payload.event || payload.status || "").toLowerCase();
+    if (!event.includes("complet") && !event.includes("paid") && !event.includes("success")) return;
     order.status = "paid";
     await sendTicketEmail(order, ref);
   } catch (e) { console.error("Webhook error:", e.message); }
 });
 
-// ── 3. Statut commande (page succès) ─────────────────────────────────────────
+// ── 3. Statut commande ────────────────────────────────────────────────────────
 app.get("/api/order-status", (req, res) => {
   const order = orders[req.query.ref];
   if (!order) return res.status(404).json({ error: "Commande introuvable." });
   res.json({ status: order.status, firstName: order.firstName, quantity: order.quantity });
 });
 
-// ── Email ticket ──────────────────────────────────────────────────────────────
+// ── Email ─────────────────────────────────────────────────────────────────────
 async function sendTicketEmail(order, ref) {
-  if (!resend) return console.warn("RESEND_API_KEY manquante, email non envoyé.");
+  if (!resend) return console.warn("RESEND_API_KEY manquante.");
   try {
     await resend.emails.send({
-      from:    SENDER_EMAIL,
-      to:      order.email,
+      from: SENDER_EMAIL,
+      to: order.email,
       subject: `Ton ticket - ${EVENT_NAME}`,
-      html:    buildTicketHtml(order, ref),
+      html: buildTicketHtml(order, ref),
     });
     console.log("Email envoyé à", order.email);
   } catch (e) { console.error("Erreur email:", e.message); }
