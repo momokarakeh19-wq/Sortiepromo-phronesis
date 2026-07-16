@@ -73,6 +73,7 @@ app.post("/api/create-payment", async (req, res) => {
   }
 });
 
+// Webhook SenePay
 app.post("/api/webhooks/senepay", async (req, res) => {
   res.status(200).json({ received: true });
   try {
@@ -85,6 +86,19 @@ app.post("/api/webhooks/senepay", async (req, res) => {
     order.status = "paid";
     await sendTicketEmail(order, ref);
   } catch (e) { console.error("Webhook error:", e.message); }
+});
+
+// Page succès — envoie l'email directement sans attendre le webhook
+app.get("/api/confirm-payment", async (req, res) => {
+  const ref = req.query.ref;
+  const order = orders[ref];
+  if (!order) return res.status(404).json({ error: "Commande introuvable." });
+  if (order.status === "paid") return res.json({ status: "paid", firstName: order.firstName, quantity: order.quantity });
+  
+  // Marquer comme payé et envoyer l'email
+  order.status = "paid";
+  await sendTicketEmail(order, ref);
+  res.json({ status: "paid", firstName: order.firstName, quantity: order.quantity });
 });
 
 app.get("/api/order-status", (req, res) => {
