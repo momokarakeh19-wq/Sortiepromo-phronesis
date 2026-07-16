@@ -17,6 +17,8 @@
   label:first-of-type { margin-top: 0; }
   input { width: 100%; padding: 12px 14px; border: 1px solid #ddd; border-radius: 8px; font-size: 15px; font-family: Arial, sans-serif; background: #fff; }
   input:focus { outline: none; border-color: #D4AF37; box-shadow: 0 0 0 3px rgba(212,175,55,0.2); }
+  .phone-row { display: flex; gap: 8px; }
+  .phone-prefix { width: 70px; flex-shrink: 0; text-align: center; background: #f4f0e3; border: 1px solid #ddd; border-radius: 8px; padding: 12px 8px; font-family: Arial, sans-serif; font-size: 14px; color: #444; }
   .total-row { margin-top: 18px; padding: 14px 16px; background: #f4f0e3; border-radius: 10px; display: flex; justify-content: space-between; align-items: center; font-family: Arial, sans-serif; }
   .total-row span:first-child { color: #888; font-size: 13px; }
   .total-row span:last-child { color: #0B1E3D; font-size: 20px; font-weight: bold; }
@@ -32,7 +34,7 @@
     <p class="eyebrow">PHRONESIS · USSD 2025/2026</p>
     <h1>Sortie de la Promotion<br>Phronesis 2025/2026</h1>
     <p>Réserve ton billet en quelques secondes</p>
-    <div class="price-tag">3 000 FCFA / billet</div>
+    <div class="price-tag">3 000 FCFA / billet · 26 Juillet 2026</div>
   </div>
 
   <div class="card">
@@ -45,6 +47,12 @@
     <label for="email">Adresse email</label>
     <input type="email" id="email" placeholder="votre@email.com" required />
 
+    <label for="phone">Numéro WhatsApp</label>
+    <div class="phone-row">
+      <div class="phone-prefix">+221</div>
+      <input type="tel" id="phone" placeholder="77 123 45 67" required />
+    </div>
+
     <label for="quantity">Nombre de tickets (max 10)</label>
     <input type="number" id="quantity" min="1" max="10" value="1" required />
 
@@ -55,7 +63,7 @@
 
     <button id="payButton">Payer avec Wave / Orange Money</button>
     <p id="message"></p>
-    <p class="footnote">Paiement sécurisé via SenePay · Ticket envoyé par email</p>
+    <p class="footnote">Paiement sécurisé via SenePay · Ticket envoyé par email ou WhatsApp</p>
   </div>
 
   <script>
@@ -78,9 +86,10 @@
       const firstName = document.getElementById('firstName').value.trim();
       const lastName  = document.getElementById('lastName').value.trim();
       const email     = document.getElementById('email').value.trim();
+      const phone     = document.getElementById('phone').value.trim();
       const quantity  = qtyInput.value;
 
-      if (!firstName || !lastName || !email) {
+      if (!firstName || !lastName || !email || !phone) {
         message.textContent = 'Veuillez remplir tous les champs.';
         message.style.display = 'block';
         return;
@@ -93,7 +102,7 @@
         const res = await fetch('/api/create-payment', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ firstName, lastName, email, quantity }),
+          body: JSON.stringify({ firstName, lastName, email, phone: '+221' + phone, quantity }),
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Erreur serveur.');
