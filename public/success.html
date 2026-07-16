@@ -3,49 +3,43 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Paiement confirmé - PHRONESIS</title>
-<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;1,500&family=Inter:wght@400;600&display=swap" rel="stylesheet">
+<title>Paiement confirmé — Phronesis</title>
 <style>
-  body {
-    margin: 0;
-    min-height: 100vh;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: radial-gradient(ellipse at top, #221a10 0%, #14100b 55%);
-    color: #f3ead8;
-    font-family: 'Inter', sans-serif;
-    text-align: center;
-    padding: 24px;
-  }
-  .card { max-width: 420px; }
-  .check {
-    width: 64px; height: 64px;
-    border-radius: 50%;
-    background: rgba(111,174,116,0.15);
-    border: 1px solid #6fae74;
-    display: flex; align-items: center; justify-content: center;
-    margin: 0 auto 22px;
-    font-size: 30px;
-    color: #6fae74;
-  }
-  h1 {
-    font-family: 'Playfair Display', serif;
-    font-style: italic;
-    font-size: 26px;
-    color: #f3d98c;
-    margin: 0 0 12px;
-  }
-  p { color: #c9bca0; font-size: 14.5px; line-height: 1.6; }
+  body { margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center;
+    font-family:Georgia,serif; background:#0B1E3D; color:#FFFDF7; text-align:center; padding:24px; }
+  .box { max-width:420px; }
+  .icon { font-size:48px; margin-bottom:12px; }
+  h1 { font-size:24px; margin:0 0 12px; }
+  p { font-family:Arial,sans-serif; color:#cfd6e6; font-size:14px; line-height:1.6; }
+  .gold { color:#D4AF37; font-weight:bold; }
 </style>
 </head>
 <body>
-  <div class="card">
-    <div class="check">✓</div>
-    <h1>Paiement reçu</h1>
-    <p>Merci ! Votre paiement est en cours de confirmation.<br/>
-    Vous recevrez votre ticket par email dans quelques instants.<br/>
-    Vérifiez aussi vos spams si vous ne le voyez pas.</p>
+  <div class="box">
+    <div class="icon">🎓</div>
+    <h1 id="title">Paiement reçu !</h1>
+    <p id="status">Envoi de ton ticket en cours...</p>
   </div>
+  <script>
+    const params = new URLSearchParams(window.location.search);
+    const ref = params.get('ref');
+    const titleEl = document.getElementById('title');
+    const statusEl = document.getElementById('status');
+
+    async function confirmPayment() {
+      try {
+        const res = await fetch('/api/confirm-payment?ref=' + encodeURIComponent(ref));
+        const data = await res.json();
+        if (data.status === 'paid') {
+          titleEl.textContent = 'Ticket envoyé ! 🎉';
+          statusEl.innerHTML = `Merci <span class="gold">${data.firstName}</span> ! Ton billet (x${data.quantity}) vient d'être envoyé par email. Vérifie aussi tes spams si tu ne le vois pas.`;
+        }
+      } catch (e) {
+        statusEl.textContent = "Paiement confirmé ! Ton ticket arrive par email dans quelques instants.";
+      }
+    }
+    if (ref) confirmPayment();
+    else statusEl.textContent = "Paiement confirmé ! Vérifie ton email.";
+  </script>
 </body>
 </html>
