@@ -1,272 +1,140 @@
-require('dotenv').config();
-const express = require('express');
-const crypto = require('crypto');
-const fs = require('fs');
-const path = require('path');
-const https = require('https');
+require("dotenv").config();
+const express = require("express");
+const axios = require("axios");
+const { Resend } = require("resend");
+const path = require("path");
+const crypto = require("crypto");
 
 const app = express();
-const PORT = process.env.PORT || 3000;
-
-// ---------- Configuration ----------
-const PRICE_PER_TICKET = parseInt(process.env.PRICE_PER_TICKET || '3000', 10);
-const MAX_TICKETS = parseInt(process.env.MAX_TICKETS || '10', 10);
-const SALE_DEADLINE = process.env.SALE_DEADLINE || '2026-07-26T23:59:59';
-const BASE_URL = process.env.BASE_URL || `http://localhost:${PORT}`;
-
-const PAYTECH_API_KEY = process.env.PAYTECH_API_KEY;
-const PAYTECH_API_SECRET = process.env.PAYTECH_API_SECRET;
-const RESEND_API_KEY = process.env.RESEND_API_KEY;
-const EMAIL_FROM = process.env.EMAIL_FROM || 'PHRONESIS <onboarding@resend.dev>';
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'changeme';
-
-const DATA_FILE = path.join(__dirname, 'data', 'orders.json');
-
-if (!fs.existsSync(path.join(__dirname, 'data'))) {
-  fs.mkdirSync(path.join(__dirname, 'data'));
-}
-if (!fs.existsSync(DATA_FILE)) {
-  fs.writeFileSync(DATA_FILE, '[]');
-}
-
-function readOrders() {
-  try {
-    return JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
-  } catch (e) {
-    return [];
-  }
-}
-
-function writeOrders(orders) {
-  fs.writeFileSync(DATA_FILE, JSON.stringify(orders, null, 2));
-}
-
-app.use('/api/webhooks/paytech', express.urlencoded({ extended: true }));
 app.use(express.json());
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.urlencoded({ extended: true }));
+app.use(express.static(path.join(__dirname, "public")));
 
-// =====================================================================
-// 1. WEBHOOK (IPN) PAYTECH
-// =====================================================================
-app.post('/api/webhooks/paytech', async (req, res) => {
+const EVENT_NAME = "Sortie de la Promotion Phronesis 2025/2026";
+const TICKET_PRICE = 3000;
+const SENEPAY_API_KEY   = process.env.SENEPAY_API_KEY;
+const SENEPAY_API_SECRET = process.env.SENEPAY_API_SECRET;
+const RESEND_API_KEY    = process.env.RESEND_API_KEY;
+const SENDER_EMAIL      = process.env.SENDER_EMAIL || "onboarding@resend.dev";
+const BASE_URL          = process.env.BASE_URL || "http://localhost:3000";
+
+const resend = RESEND_API_KEY ? new Resend(RESEND_API_KEY) : null;
+const orders = {};
+
+// ── 1. Créer une session de paiement SenePay ──────────────────────────────────
+app.post("/api/create-payment", async (req, res) => {
   try {
-    const { type_event, ref_command } = req.body;
-    console.log(`Notification IPN PayTech : ${ref_command} (${type_event})`);
-
-    const orders = readOrders();
-    const order = orders.find((o) => o.orderReference === ref_command);
-
-    if (!order) return res.status(200).send('Order not found');
-    if (order.status === 'paid' || order.status === 'failed') return res.status(200).send('Already processed');
-
-    if (type_event === 'sale_complete') {
-      order.status = 'paid';
-      order.paidAt = new Date().toISOString();
-      writeOrders(orders);
-      sendTicketEmail(order).catch((err) => console.error('Erreur email:', err));
-    } else {
-      order.status = 'failed';
-      writeOrders(orders);
-    }
-    return res.status(200).send('OK');
-  } catch (err) {
-    console.error('Erreur Webhook:', err);
-    return res.status(200).send('Error');
-  }
-});
-
-// =====================================================================
-// 2. INITIALISATION DU PAIEMENT PAYTECH
-// =====================================================================
-app.post('/api/orders', (req, res) => {
-  try {
-    const { firstName, lastName, email, phone, quantity } = req.body;
-
-    if (!firstName || !lastName || !email || !phone || !quantity) {
-      return res.status(400).json({ error: 'Tous les champs sont requis.' });
-    }
+    const { firstName, lastName, email, quantity } = req.body;
+    if (!firstName || !lastName || !email || !quantity)
+      return res.status(400).json({ error: "Tous les champs sont obligatoires." });
 
     const qty = parseInt(quantity, 10);
-    if (isNaN(qty) || qty < 1 || qty > MAX_TICKETS) {
-      return res.status(400).json({ error: 'Quantité invalide.' });
-    }
+    if (!qty || qty < 1 || qty > 10)
+      return res.status(400).json({ error: "Nombre de tickets invalide (max 10)." });
 
-    if (new Date() > new Date(SALE_DEADLINE)) {
-      return res.status(400).json({ error: 'La vente est terminée.' });
-    }
+    const ref   = "PHRO-" + crypto.randomBytes(5).toString("hex").toUpperCase();
+    const amount = TICKET_PRICE * qty;
 
-    const amount = qty * PRICE_PER_TICKET;
-    const orderReference = `PHR-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    orders[ref] = { firstName, lastName, email, quantity: qty, amount, status: "pending" };
 
-    const paymentData = JSON.stringify({
-      item_name: `Ticket Sortie Promo Phronesis (${qty})`,
-      item_price: amount,
-      currency: 'XOF',
-      ref_command: orderReference,
-      command_name: `Achat de ${qty} ticket(s) - Cérémonie PHRONESIS`,
-      env: 'prod',
-      success_url: 'https://sortiepromo-phronesis.onrender.com/success.html?ref=' + orderReference,
-      cancel_url: 'https://sortiepromo-phronesis.onrender.com/cancel.html'
-    });
+    if (!SENEPAY_API_KEY || !SENEPAY_API_SECRET)
+      return res.status(500).json({ error: "Clés API manquantes. Contacte l'administrateur." });
 
-    const options = {
-      hostname: 'paytech.sn',
-      port: 443,
-      path: '/api/payment/request-payment',
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-        'API_KEY': process.env.PAYTECH_API_KEY,
-        'API_SECRET': process.env.PAYTECH_API_SECRET,
-        'Content-Length': Buffer.byteLength(paymentData)
+    // Appel API SenePay — création d'un paiement (payin)
+    const response = await axios.post(
+      "https://api.sene-pay.com/api/v1/payin",
+      {
+        amount,
+        currency: "XOF",
+        order_id: ref,
+        description: `${qty} ticket(s) - ${EVENT_NAME}`,
+        callback_url: `${BASE_URL}/api/webhooks/senepay`,
+        return_url:   `${BASE_URL}/success.html?ref=${ref}`,
+        cancel_url:   `${BASE_URL}/?cancelled=1`,
+        customer: { name: `${firstName} ${lastName}`, email }
+      },
+      {
+        headers: {
+          "Content-Type":  "application/json",
+          "X-Api-Key":     SENEPAY_API_KEY,
+          "X-Api-Secret":  SENEPAY_API_SECRET,
+        },
       }
-    };
+    );
 
-    const request = https.request(options, (response) => {
-      let data = '';
-      response.on('data', (chunk) => { data += chunk; });
-      response.on('end', () => {
-        try {
-          const paytechData = JSON.parse(data);
-          if (paytechData.success === 1) {
-            const orders = readOrders();
-            orders.push({
-              orderReference,
-              firstName,
-              lastName,
-              email,
-              phone,
-              quantity: qty,
-              amount,
-              status: 'pending',
-              createdAt: new Date().toISOString(),
-            });
-            writeOrders(orders);
+    const data = response.data;
+    const checkoutUrl = data.payment_url || data.checkout_url || data.url || data.redirect_url;
 
-            return res.json({ checkoutUrl: paytechData.redirect_url });
-          } else {
-            console.error('PayTech refus:', paytechData);
-            return res.status(400).json({ error: 'Échec de l’initialisation du paiement.' });
-          }
-        } catch (parseErr) {
-          console.error('Erreur de lecture PayTech:', data);
-          return res.status(500).json({ error: 'Erreur de communication avec le processeur.' });
-        }
-      });
-    });
+    if (!checkoutUrl)
+      return res.status(500).json({ error: "Réponse API SenePay invalide.", raw: data });
 
-    request.on('error', (err) => {
-      console.error('Erreur réseau PayTech:', err);
-      return res.status(500).json({ error: 'Erreur de connexion aux services de paiement.' });
-    });
-
-    request.write(paymentData);
-    request.end();
-
+    res.json({ checkoutUrl });
   } catch (err) {
-    console.error('Erreur interne:', err);
-    return res.status(500).json({ error: 'Erreur serveur.' });
+    console.error("Erreur SenePay:", err.response?.data || err.message);
+    res.status(500).json({
+      error: "Impossible de créer le paiement.",
+      detail: err.response?.data || err.message
+    });
   }
 });
 
-// =====================================================================
-// 3. ENVOI DE L'EMAIL (Resend)
-// =====================================================================
-async function sendTicketEmail(order) {
-  if (!RESEND_API_KEY) return;
+// ── 2. Webhook SenePay (confirmation paiement) ────────────────────────────────
+app.post("/api/webhooks/senepay", async (req, res) => {
+  res.status(200).json({ received: true });
+  try {
+    const payload = req.body;
+    const ref = payload.order_id || payload.orderReference || payload.reference;
+    const order = orders[ref];
+    if (!order || order.status === "paid") return;
+    const status = payload.status || payload.event || "";
+    if (!["paid","completed","success","checkout.session.completed"].some(s => status.toLowerCase().includes(s))) return;
+    order.status = "paid";
+    await sendTicketEmail(order, ref);
+  } catch (e) { console.error("Webhook error:", e.message); }
+});
 
-  const ticketPath = path.join(__dirname, 'public', 'ticket.jpg');
-  if (!fs.existsSync(ticketPath)) return;
-  const ticketBase64 = fs.readFileSync(ticketPath).toString('base64');
+// ── 3. Statut commande (page succès) ─────────────────────────────────────────
+app.get("/api/order-status", (req, res) => {
+  const order = orders[req.query.ref];
+  if (!order) return res.status(404).json({ error: "Commande introuvable." });
+  res.json({ status: order.status, firstName: order.firstName, quantity: order.quantity });
+});
 
-  const emailData = JSON.stringify({
-    from: EMAIL_FROM,
-    to: order.email,
-    subject: 'Votre ticket - Cérémonie PHRONESIS',
-    html: `
-      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-        <h2>Merci ${order.firstName} ${order.lastName} !</h2>
-        <p>Votre paiement de <strong>${order.amount} FCFA</strong> pour <strong>${order.quantity} ticket(s)</strong> a bien été confirmé.</p>
-        <p><strong>Référence :</strong> ${order.orderReference}</p>
-        <p>📅 Dimanche 26 juillet 2026 — Théâtre National Daniel Sorano à 13h00</p>
-      </div>
-    `,
-    attachments: [{ filename: 'ticket-phronesis.jpg', content: ticketBase64 }]
-  });
-
-  const options = {
-    hostname: 'api.resend.com',
-    path: '/emails',
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${RESEND_API_KEY}`,
-      'Content-Type': 'application/json',
-      'Content-Length': Buffer.byteLength(emailData)
-    }
-  };
-
-  const req = https.request(options);
-  req.write(emailData);
-  req.end();
+// ── Email ticket ──────────────────────────────────────────────────────────────
+async function sendTicketEmail(order, ref) {
+  if (!resend) return console.warn("RESEND_API_KEY manquante, email non envoyé.");
+  try {
+    await resend.emails.send({
+      from:    SENDER_EMAIL,
+      to:      order.email,
+      subject: `Ton ticket - ${EVENT_NAME}`,
+      html:    buildTicketHtml(order, ref),
+    });
+    console.log("Email envoyé à", order.email);
+  } catch (e) { console.error("Erreur email:", e.message); }
 }
 
-// =====================================================================
-// 4. PANNEAU D'ADMINISTRATION
-// =====================================================================
-app.get('/admin', (req, res) => {
-  const password = req.query.password;
-  if (password !== ADMIN_PASSWORD) {
-    return res.send(`
-      <html><body style="font-family:Arial;max-width:400px;margin:80px auto;text-align:center;">
-        <h2>Accès admin</h2>
-        <form method="GET" action="/admin">
-          <input type="password" name="password" placeholder="Mot de passe" style="padding:10px;width:100%;box-sizing:border-box;margin-bottom:10px;" />
-          <button type="submit" style="padding:10px 20px;width:100%;">Entrer</button>
-        </form>
-      </body></html>
-    `);
-  }
+function buildTicketHtml(order, ref) {
+  return `
+  <div style="font-family:Georgia,serif;background:#0B1E3D;padding:32px 0;">
+    <table align="center" width="420" style="background:#FFFDF7;border-radius:14px;border:1px solid #D4AF37;">
+      <tr><td style="background:#0B1E3D;padding:24px 28px;">
+        <p style="margin:0;color:#D4AF37;font-size:11px;letter-spacing:2px;text-transform:uppercase;">Billet d'entrée · PHRONESIS</p>
+        <h1 style="margin:6px 0 0;color:#FFFDF7;font-size:20px;">${EVENT_NAME}</h1>
+      </td></tr>
+      <tr><td style="padding:24px 28px;">
+        <p style="margin:0 0 4px;color:#777;font-size:11px;text-transform:uppercase;letter-spacing:1px;">Titulaire</p>
+        <p style="margin:0 0 16px;color:#0B1E3D;font-size:18px;font-weight:bold;">${order.firstName} ${order.lastName}</p>
+        <p style="margin:0 0 4px;color:#777;font-size:11px;text-transform:uppercase;letter-spacing:1px;">Tickets</p>
+        <p style="margin:0 0 16px;color:#0B1E3D;font-size:18px;font-weight:bold;">${order.quantity}</p>
+        <p style="margin:0 0 4px;color:#777;font-size:11px;text-transform:uppercase;letter-spacing:1px;">Référence</p>
+        <p style="margin:0 0 16px;color:#0B1E3D;font-size:15px;font-family:monospace;">${ref}</p>
+        <div style="border-top:1px dashed #D4AF37;margin:16px 0;"></div>
+        <p style="margin:0;color:#555;font-size:13px;line-height:1.5;">Présente ce billet à l'entrée. Merci et à bientôt !</p>
+      </td></tr>
+    </table>
+  </div>`;
+}
 
-  const orders = readOrders();
-  const paid = orders.filter((o) => o.status === 'paid');
-  const totalTickets = paid.reduce((sum, o) => sum + o.quantity, 0);
-  const totalAmount = paid.reduce((sum, o) => sum + o.amount, 0);
-
-  const rows = paid
-    .sort((a, b) => new Date(a.paidAt) - new Date(b.paidAt))
-    .map((o, i) => `
-      <tr>
-        <td>${i + 1}</td>
-        <td>${o.firstName} ${o.lastName}</td>
-        <td>${o.email}</td>
-        <td>${o.phone}</td>
-        <td>${o.quantity}</td>
-        <td>${o.amount} FCFA</td>
-        <td>${new Date(o.paidAt).toLocaleString('fr-FR')}</td>
-      </tr>`).join('');
-
-  res.send(`
-    <html>
-    <head><meta charset="utf-8"><title>Admin - Tickets PHRONESIS</title></head>
-    <body style="font-family:Arial;max-width:900px;margin:30px auto;padding:0 15px;">
-      <h2>Liste des tickets payés</h2>
-      <p><strong>${paid.length}</strong> commandes payées — <strong>${totalTickets}</strong> tickets vendus — <strong>${totalAmount}</strong> FCFA encaissés</p>
-      <table border="1" cellpadding="8" cellspacing="0" style="width:100%;border-collapse:collapse;font-size:14px;">
-        <tr style="background:#eee;">
-          <th>#</th><th>Nom</th><th>Email</th><th>Téléphone</th><th>Tickets</th><th>Montant</th><th>Payé le</th>
-        </tr>
-        ${rows}
-      </table>
-    </body>
-    </html>
-  `);
-});
-
-app.get('/api/config', (req, res) => {
-  res.json({ pricePerTicket: PRICE_PER_TICKET, maxTickets: MAX_TICKETS, saleDeadline: SALE_DEADLINE });
-});
-
-app.listen(PORT, () => {
-  console.log(`Serveur Phronesis actif sur le port ${PORT}`);
-});
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`Serveur lancé sur le port ${PORT}`));
